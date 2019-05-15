@@ -24,7 +24,7 @@ module.exports = (slsOptions, slsService, serverless, log) => {
   Object.keys(slsService.functions).forEach(key => {
     const fun = getFunction(key, slsService)
     const servicePath = path.join(serverless.config.servicePath, location)
-    const funOptions = functionHelper.getFunctionOptions(fun, key, servicePath)
+    const funOptions = functionHelper.getFunctionOptions(fun, key, servicePath, slsOptions.providedRuntime)
 
     if (!fun.environment) {
       fun.environment = {}
@@ -88,7 +88,7 @@ module.exports = (slsOptions, slsService, serverless, log) => {
           funName = _.lowerFirst(awsFunName).replace('LambdaFunction', '')
           fun = getFunction(funName, slsService)
           const servicePath = path.join(serverless.config.servicePath, location)
-          funOptions = functionHelper.getFunctionOptions(fun, key, servicePath)
+          funOptions = functionHelper.getFunctionOptions(fun, key, servicePath, slsOptions.providedRuntime)
 
           if (!fun.environment) {
             fun.environment = {}
