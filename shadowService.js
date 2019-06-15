@@ -44,35 +44,80 @@ const handleUpdateTopic = (serialNumber, shadow) => {
     if (err) {
       return publishError(err)
     }
+    /*
     if (shadow.state.desired) {
       if (!result) {
         return publishError('Can\'t update desired state for non existing thing.')
       }
       return updateShadowDesired(serialNumber, JSON.parse(result), shadow)
     } else {
+     */
       return updateShadow(serialNumber, (result ? JSON.parse(result) : null), shadow)
+    /*
     }
+     */
   })
 }
 
+function removeNull(obj){
+  var isArray = obj instanceof Array;
+  for (var k in obj){
+    if (obj[k]===null) isArray ? obj.splice(k,1) : delete obj[k];
+    else if (typeof obj[k]=="object") removeNull(obj[k]);
+  }
+  return obj
+}
+
+const fixDelta = (obj) => {
+  if (!obj.state.desired || !obj.state.reported)
+    return obj
+
+  const fixup = (desired, reported) => {
+    Object.keys(desired).forEach((key) => {
+      if (reported[key] === undefined)
+        return;
+      if (typeof desired[key] !== typeof reported[key] || Array.isArray(desired[key]) != Array.isArray(reported[key]))
+        return;
+      if (typeof desired[key] === 'object') {
+        fixup(desired[key], reported[key]);
+        if (Object.keys(desired[key]).length == 0)
+          desired[key] = null;
+      }
+      let dv = desired[key];
+      let rv = reported[key];
+      if (Array.isArray(dv)) {
+        dv = JSON.stringify(dv);
+        rv = JSON.stringify(rv);
+      }
+      if (dv === rv) {
+        desired[key] = null;
+      }
+    })
+  }
+  fixup(obj.state.desired, obj.state.reported)
+  return obj
+}
 const updateShadow = (serialNumber, prevShadow, shadow) => {
   log(`Updating shadow reported state for '${serialNumber}'`)
-  const newShadow = _.merge(prevShadow, shadow)
+  const newShadow = removeNull(fixDelta(_.merge(prevShadow, shadow)))
   updateThingDb(serialNumber, newShadow).then((version) => {
-    publishAccepted(newShadow, serialNumber, version)
+    publishAccepted(shadow, serialNumber, version)
+    publishDelta(newShadow, serialNumber, version)
     publishDocuments(prevShadow, serialNumber, newShadow, version)
   }).catch((err) => publishError(err, serialNumber))
 }
 
+/*
 const updateShadowDesired = (serialNumber, prevShadow, desiredShadow) => {
   log(`Updating shadow desired state for '${serialNumber}'`)
-  const newShadow = _.merge(prevShadow, desiredShadow)
+  const newShadow = removeNull(_.merge(prevShadow, desiredShadow))
   updateThingDb(serialNumber, newShadow).then((version) => {
     publishAccepted(desiredShadow, serialNumber, version)
-    publishDelta(desiredShadow, serialNumber, version)
+    publishDelta(newShadow, serialNumber, version)
     publishDocuments(prevShadow, serialNumber, newShadow, version)
   }).catch((err) => publishError(err, serialNumber))
 }
+*/
 
 const publishAccepted = (shadow, serialNumber, version) => {
   client.publish(getTopics(serialNumber).updateAccepted, JSON.stringify(Object.assign(shadow, {

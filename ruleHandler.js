@@ -116,14 +116,16 @@ module.exports = (slsOptions, slsService, serverless, log) => {
       ruleConf.Actions
         .filter(action => action.Republish)
         .forEach(republishAction => {
-          const topicMatcher = parseSelect(ruleConf.Sql).topic
+          const parsed = parseSelect(ruleConf.Sql)
+          const topicMatcher = parsed.topic
 
           if (!republishMap[topicMatcher]) {
             republishMap[topicMatcher] = []
           }
           const cleanedRepublishTopic = cleanRepublishTopic(republishAction.Republish.Topic)
           republishMap[topicMatcher].push({
-            republishTopic: cleanedRepublishTopic
+            republishTopic: cleanedRepublishTopic,
+            select: parsed.select
           })
         })
 
@@ -202,7 +204,31 @@ module.exports = (slsOptions, slsService, serverless, log) => {
       if (republishMap[topicMatcher]) {
         republishMap[topicMatcher].forEach(republishRule => {
           const republishTopic = fillSubstitutionTemplates(topicUrl, republishRule.republishTopic)
-          client.publish(republishTopic, originalMessage, () => {
+          const event = applySelect({
+            select: republishRule.select,
+            payload: originalMessage,
+            context: {
+              topic: (index) => topic(index, topicUrl),
+              clientid: () => clientid(topicUrl),
+              timestamp: () => timestamp(),
+              accountid: () => accountid()
+            }
+          })
+          const newMessage=  { }
+          Object.keys(event).forEach((key) => {
+            if (event[key] !== undefined) {
+              const parts = key.split('.')
+              let lastPiece = newMessage
+              for (let i=0;i<parts.length-1;i++) {
+                if (newMessage[parts[i]] === undefined)
+                  newMessage[parts[i]] = { }
+                lastPiece = newMessage[parts[i]]
+              }
+              lastPiece[parts[parts.length-1]] = event[key]
+            }
+          })
+          console.log(newMessage)
+          client.publish(republishTopic, JSON.stringify(newMessage), () => {
             console.log(`Republished from: "${topicUrl}", to: "${republishTopic}"`)
           })
         })
